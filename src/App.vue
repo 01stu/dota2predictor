@@ -852,10 +852,10 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
             </div>
             <div class="hero-stats">
               <h2>已完成预测</h2>
-              <div><span>小组赛</span><strong>{{ groupPredictionCount }}<small>/ 39</small></strong></div>
-              <div><span>晋级附加赛</span><strong>{{ eliminationPredictionCount }}<small>/ 5</small></strong></div>
-              <div><span>晋级预测</span><strong>{{ advancementAssignedCount }}<small>/ 16</small></strong></div>
-              <div><span>淘汰赛</span><strong>{{ playoffPredictionCount }}<small>/ 14</small></strong></div>
+              <button class="hero-stat-link" aria-label="前往小组赛预测" @click="selectView('groups')"><span>小组赛</span><strong>{{ groupPredictionCount }}<small>/ 39</small></strong><ArrowRight :size="16" /></button>
+              <button class="hero-stat-link" aria-label="前往晋级附加赛预测" @click="selectView('elimination')"><span>晋级附加赛</span><strong>{{ eliminationPredictionCount }}<small>/ 5</small></strong><ArrowRight :size="16" /></button>
+              <button class="hero-stat-link" aria-label="前往晋级预测" @click="selectView('advancement')"><span>晋级预测</span><strong>{{ advancementAssignedCount }}<small>/ 16</small></strong><ArrowRight :size="16" /></button>
+              <button class="hero-stat-link" aria-label="前往淘汰赛预测" @click="selectView('playoffs')"><span>淘汰赛</span><strong>{{ playoffPredictionCount }}<small>/ 14</small></strong><ArrowRight :size="16" /></button>
             </div>
           </section>
 
@@ -1068,8 +1068,8 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
               <button aria-label="关闭队伍选择" @click="closeAdvancementPicker"><X :size="20" /></button>
             </header>
             <div class="bracket-team-options advancement-team-options">
-              <button v-for="option in advancementTeamOptions" :key="option.id" :class="{ active: advancementSlots[advancementPicker] === option.id }" @click="chooseAdvancementTeam(option.id)">
-                <TeamLogo :meta="option.meta" compact /><span>{{ option.meta.name }}</span><small v-if="advancementSlots[advancementPicker] === option.id">当前</small>
+              <button v-for="option in advancementTeamOptions" :key="option.id" :class="{ active: advancementSlots[advancementPicker] === option.id, used: advancementSlots.includes(option.id) }" :disabled="advancementSlots.includes(option.id)" @click="chooseAdvancementTeam(option.id)">
+                <TeamLogo :meta="option.meta" compact /><span>{{ option.meta.name }}</span><small v-if="advancementSlots.includes(option.id)">{{ advancementSlots[advancementPicker] === option.id ? '当前格' : '已选择' }}</small>
               </button>
             </div>
             <button v-if="advancementSlots[advancementPicker]" class="advancement-clear-action" @click="clearAdvancementSlot"><X :size="16" /> 清空当前格</button>
