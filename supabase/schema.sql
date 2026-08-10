@@ -29,12 +29,40 @@ create table if not exists public.user_profiles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.advancement_predictions (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  slots jsonb not null check (jsonb_typeof(slots) = 'array'),
+  is_complete boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.advancement_prediction_settings (
+  id boolean primary key default true check (id),
+  lock_at timestamptz,
+  is_open boolean not null default true,
+  result_slots jsonb check (result_slots is null or jsonb_typeof(result_slots) = 'array'),
+  results_published boolean not null default false,
+  published_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.advancement_prediction_settings (id, lock_at)
+values (true, '2026-08-13 10:00:00+08')
+on conflict (id) do nothing;
+
 create index if not exists match_predictions_totals_idx
   on public.match_predictions (match_key, selected_team);
+
+create index if not exists advancement_predictions_complete_idx
+  on public.advancement_predictions (is_complete)
+  where is_complete;
 
 alter table public.prediction_matches enable row level security;
 alter table public.match_predictions enable row level security;
 alter table public.user_profiles enable row level security;
+alter table public.advancement_predictions enable row level security;
+alter table public.advancement_prediction_settings enable row level security;
 
 drop policy if exists "public match metadata is readable" on public.prediction_matches;
 create policy "public match metadata is readable"
@@ -169,8 +197,251 @@ begin
 end;
 $$;
 
+create or replace function public.validate_advancement_slots(
+  p_slots text[],
+  p_require_complete boolean default false
+)
+returns integer
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  v_selected_count integer;
+  v_distinct_count integer;
+begin
+  if coalesce(array_length(p_slots, 1), 0) <> 16 or array_lower(p_slots, 1) <> 1 then
+    raise exception 'Advancement prediction must contain exactly 16 slots';
+  end if;
+
+  if exists (
+    select 1
+    from unnest(p_slots) as selected(team_id)
+    where selected.team_id is not null
+      and selected.team_id <> all (array[
+        'Falcons', 'LGD', 'IronWing', 'Nigma', 'BoomBoys', 'OG', 'Vision', 'Resilience',
+        'Spirit', 'XG', 'Liquid', 'Vici', 'Aurora', 'GamerLegion', 'Yandex', 'Huligani'
+      ]::text[])
+  ) then
+    raise exception 'Advancement prediction contains an unknown team';
+  end if;
+
+  select count(team_id)::integer, count(distinct team_id)::integer
+  into v_selected_count, v_distinct_count
+  from unnest(p_slots) as selected(team_id)
+  where selected.team_id is not null;
+
+  if v_selected_count <> v_distinct_count then
+    raise exception 'Each team may only appear once';
+  end if;
+
+  if p_require_complete and v_selected_count <> 16 then
+    raise exception 'All 16 teams are required';
+  end if;
+
+  return v_selected_count;
+end;
+$$;
+
+create or replace function public.advancement_bucket(p_position bigint)
+returns text
+language sql
+immutable
+strict
+set search_path = ''
+as $$
+  select case
+    when p_position = 1 then '4-0'
+    when p_position between 2 and 3 then '4-1'
+    when p_position between 4 and 8 then 'playin-winner'
+    when p_position between 9 and 13 then 'playin-loser'
+    when p_position between 14 and 15 then '1-4'
+    when p_position = 16 then '0-4'
+  end;
+$$;
+
+create or replace function public.advancement_correct_count(
+  p_prediction jsonb,
+  p_result jsonb
+)
+returns integer
+language sql
+immutable
+strict
+set search_path = ''
+as $$
+  select count(*)::integer
+  from jsonb_array_elements_text(p_prediction) with ordinality as predicted(team_id, position)
+  join jsonb_array_elements_text(p_result) with ordinality as actual(team_id, position)
+    using (team_id)
+  where public.advancement_bucket(predicted.position) = public.advancement_bucket(actual.position);
+$$;
+
+create or replace function public.submit_advancement_prediction(p_slots text[])
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_settings public.advancement_prediction_settings%rowtype;
+  v_selected_count integer;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required' using errcode = '42501';
+  end if;
+
+  select * into v_settings
+  from public.advancement_prediction_settings
+  where id = true;
+
+  if not found
+    or not v_settings.is_open
+    or v_settings.results_published
+    or (v_settings.lock_at is not null and now() >= v_settings.lock_at)
+  then
+    raise exception 'Advancement predictions are locked';
+  end if;
+
+  v_selected_count := public.validate_advancement_slots(p_slots, false);
+
+  insert into public.advancement_predictions (user_id, slots, is_complete)
+  values (v_user_id, to_jsonb(p_slots), v_selected_count = 16)
+  on conflict (user_id)
+  do update set
+    slots = excluded.slots,
+    is_complete = excluded.is_complete,
+    updated_at = now();
+end;
+$$;
+
+create or replace function public.get_advancement_prediction_summary()
+returns table (
+  prediction_slots jsonb,
+  accepting_predictions boolean,
+  lock_at timestamptz,
+  results_published boolean,
+  result_slots jsonb,
+  selected_count integer,
+  my_correct_count integer,
+  my_accuracy numeric,
+  total_players bigint,
+  average_accuracy numeric,
+  perfect_players bigint,
+  my_rank bigint
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_settings public.advancement_prediction_settings%rowtype;
+  v_prediction_slots jsonb;
+  v_is_complete boolean := false;
+  v_accepting boolean;
+  v_selected_count integer := 0;
+  v_my_correct_count integer;
+  v_my_accuracy numeric;
+  v_total_players bigint := 0;
+  v_average_accuracy numeric;
+  v_perfect_players bigint;
+  v_my_rank bigint;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required' using errcode = '42501';
+  end if;
+
+  select * into v_settings
+  from public.advancement_prediction_settings
+  where id = true;
+
+  if not found then
+    raise exception 'Advancement prediction settings are missing';
+  end if;
+
+  select p.slots, p.is_complete
+  into v_prediction_slots, v_is_complete
+  from public.advancement_predictions p
+  where p.user_id = v_user_id;
+
+  if v_prediction_slots is not null then
+    select count(*)::integer into v_selected_count
+    from jsonb_array_elements(v_prediction_slots) as slot(value)
+    where slot.value <> 'null'::jsonb;
+  end if;
+
+  v_accepting := v_settings.is_open
+    and not v_settings.results_published
+    and (v_settings.lock_at is null or now() < v_settings.lock_at);
+
+  select count(*)::bigint into v_total_players
+  from public.advancement_predictions p
+  where p.is_complete;
+
+  if v_settings.results_published and v_settings.result_slots is not null then
+    if v_is_complete then
+      v_my_correct_count := public.advancement_correct_count(v_prediction_slots, v_settings.result_slots);
+      v_my_accuracy := round(v_my_correct_count * 100.0 / 16, 1);
+    end if;
+
+    select
+      round(avg(public.advancement_correct_count(p.slots, v_settings.result_slots) * 100.0 / 16), 1),
+      count(*) filter (where public.advancement_correct_count(p.slots, v_settings.result_slots) = 16)::bigint
+    into v_average_accuracy, v_perfect_players
+    from public.advancement_predictions p
+    where p.is_complete;
+
+    if v_is_complete then
+      select (1 + count(*))::bigint into v_my_rank
+      from public.advancement_predictions p
+      where p.is_complete
+        and public.advancement_correct_count(p.slots, v_settings.result_slots) > v_my_correct_count;
+    end if;
+  end if;
+
+  return query select
+    v_prediction_slots,
+    v_accepting,
+    v_settings.lock_at,
+    v_settings.results_published,
+    v_settings.result_slots,
+    v_selected_count,
+    v_my_correct_count,
+    v_my_accuracy,
+    v_total_players,
+    v_average_accuracy,
+    v_perfect_players,
+    v_my_rank;
+end;
+$$;
+
+create or replace function public.publish_advancement_results(p_slots text[])
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.validate_advancement_slots(p_slots, true);
+
+  update public.advancement_prediction_settings
+  set
+    result_slots = to_jsonb(p_slots),
+    results_published = true,
+    is_open = false,
+    published_at = now(),
+    updated_at = now()
+  where id = true;
+end;
+$$;
+
 revoke all on public.match_predictions from anon, authenticated;
 revoke all on public.user_profiles from anon, authenticated;
+revoke all on public.advancement_predictions from anon, authenticated;
+revoke all on public.advancement_prediction_settings from anon, authenticated;
 grant select on public.prediction_matches to anon, authenticated;
 
 revoke all on function public.submit_match_prediction(text, text) from public;
@@ -178,12 +449,20 @@ revoke all on function public.get_prediction_totals(text[]) from public;
 revoke all on function public.get_my_predictions() from public;
 revoke all on function public.get_my_profile() from public;
 revoke all on function public.update_my_nickname(text) from public;
+revoke all on function public.validate_advancement_slots(text[], boolean) from public;
+revoke all on function public.advancement_bucket(bigint) from public;
+revoke all on function public.advancement_correct_count(jsonb, jsonb) from public;
+revoke all on function public.submit_advancement_prediction(text[]) from public;
+revoke all on function public.get_advancement_prediction_summary() from public;
+revoke all on function public.publish_advancement_results(text[]) from public;
 
 grant execute on function public.submit_match_prediction(text, text) to authenticated;
 grant execute on function public.get_prediction_totals(text[]) to anon, authenticated;
 grant execute on function public.get_my_predictions() to authenticated;
 grant execute on function public.get_my_profile() to authenticated;
 grant execute on function public.update_my_nickname(text) to authenticated;
+grant execute on function public.submit_advancement_prediction(text[]) to authenticated;
+grant execute on function public.get_advancement_prediction_summary() to authenticated;
 
 insert into public.prediction_matches (match_key, stage, team_a, team_b, lock_at)
 values

@@ -2,15 +2,17 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   ArrowRight, CalendarDays, CheckCircle2, ChevronDown, Clock3, Database,
-  LayoutDashboard, ListOrdered, Menu, Pencil, Radio, Shield, Sparkles, Swords,
+  GitBranch, LayoutDashboard, ListOrdered, Menu, Pencil, Radio, Shield, Sparkles, Swords,
   Target, Trophy, UserRound, Users, X, XCircle
 } from 'lucide-vue-next'
 import TeamLogo from './components/TeamLogo.vue'
 import { heroes } from './data/heroes'
 import { playerIds } from './data/playerIds'
 import {
+  getCloudAdvancementPrediction,
   initializePredictionStore,
   isSupabaseConfigured,
+  submitCloudAdvancementPrediction,
   submitCloudPrediction,
   updateCloudNickname,
 } from './services/predictions'
@@ -60,6 +62,7 @@ const viewPaths = {
   standings: '/standings',
   groups: '/groups',
   elimination: '/elimination-round',
+  advancement: '/advancement-prediction',
   playoffs: '/playoffs',
   'my-picks': '/my-predictions',
 }
@@ -91,6 +94,7 @@ const navItems = [
   { id: 'standings', label: '小组赛排名', icon: ListOrdered },
   { id: 'groups', label: '小组赛', icon: Users },
   { id: 'elimination', label: '晋级附加赛', icon: Shield },
+  { id: 'advancement', label: '晋级预测', icon: GitBranch },
   { id: 'playoffs', label: '淘汰赛', icon: Swords },
   { id: 'my-picks', label: '我的预测', icon: Target },
 ]
@@ -98,22 +102,148 @@ const navItems = [
 const swissRounds = [1, 2, 3, 4, 5]
 
 const teamMeta = {
-  Falcons: { name: 'Team Falcons', short: 'FLC', color: '#e9ca75', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/9247354.png' },
-  LGD: { name: 'LGD Gaming', short: 'LGD', color: '#df3d3b', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/10150538.png' },
-  IronWing: { name: 'Iron Wing', short: 'IW', color: '#b6b9c1', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/10150413.png' },
-  Nigma: { name: 'Nigma Galaxy', short: 'NGX', color: '#6b93dc', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/10136357.png' },
-  BoomBoys: { name: 'BOOMBOYS', short: 'BB', color: '#e85b3e', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/8255888.png' },
-  OG: { name: 'OG', short: 'OG', color: '#e9e9e9', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/2586976.png' },
-  Vision: { name: 'Team Vision', short: 'VIS', color: '#66b3b8', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/9572001.png' },
-  Resilience: { name: 'Team Resilience', short: 'RES', color: '#d8a96d', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/5017210.png' },
-  Spirit: { name: 'Team Spirit', short: 'TS', color: '#f0c75d', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/7119388.png' },
-  XG: { name: 'Xtreme Gaming', short: 'XG', color: '#e15d58', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/8261500.png' },
-  Liquid: { name: 'Team Liquid', short: 'TL', color: '#67a9e6', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/2163.png' },
-  Vici: { name: 'Vici Gaming', short: 'VG', color: '#e67b76', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/726228.png' },
-  Aurora: { name: 'Aurora Gaming', short: 'AUR', color: '#ad78df', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/9467224.png' },
-  GamerLegion: { name: 'GamerLegion', short: 'GL', color: '#df3d39', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/9964962.png' },
-  Yandex: { name: 'Team Yandex', short: 'YAN', color: '#e6d65e', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/9823272.png' },
-  Huligani: { name: 'HULIGANI', short: 'HUL', color: '#c8c8cd', logo: 'https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/teamlogos/10149530.png' },
+  Falcons: { name: 'Team Falcons', short: 'FLC', color: '#e9ca75', logo: '/teamlogos/9247354.png' },
+  LGD: { name: 'LGD Gaming', short: 'LGD', color: '#df3d3b', logo: '/teamlogos/10150538.png' },
+  IronWing: { name: 'Iron Wing', short: 'IW', color: '#b6b9c1', logo: '/teamlogos/10150413.png' },
+  Nigma: { name: 'Nigma Galaxy', short: 'NGX', color: '#6b93dc', logo: '/teamlogos/10136357.png' },
+  BoomBoys: { name: 'BOOMBOYS', short: 'BB', color: '#e85b3e', logo: '/teamlogos/8255888.png' },
+  OG: { name: 'OG', short: 'OG', color: '#e9e9e9', logo: '/teamlogos/2586976.png' },
+  Vision: { name: 'Team Vision', short: 'VIS', color: '#66b3b8', logo: '/teamlogos/9572001.png' },
+  Resilience: { name: 'Team Resilience', short: 'RES', color: '#d8a96d', logo: '/teamlogos/5017210.png' },
+  Spirit: { name: 'Team Spirit', short: 'TS', color: '#f0c75d', logo: '/teamlogos/7119388.png' },
+  XG: { name: 'Xtreme Gaming', short: 'XG', color: '#e15d58', logo: '/teamlogos/8261500.png' },
+  Liquid: { name: 'Team Liquid', short: 'TL', color: '#67a9e6', logo: '/teamlogos/2163.png' },
+  Vici: { name: 'Vici Gaming', short: 'VG', color: '#e67b76', logo: '/teamlogos/726228.png' },
+  Aurora: { name: 'Aurora Gaming', short: 'AUR', color: '#ad78df', logo: '/teamlogos/9467224.png' },
+  GamerLegion: { name: 'GamerLegion', short: 'GL', color: '#df3d39', logo: '/teamlogos/9964962.png' },
+  Yandex: { name: 'Team Yandex', short: 'YAN', color: '#e6d65e', logo: '/teamlogos/9823272.png' },
+  Huligani: { name: 'HULIGANI', short: 'HUL', color: '#c8c8cd', logo: '/teamlogos/10149530.png' },
+}
+
+const advancementStorageKey = 'ti2026-advancement-prediction-v2'
+const advancementDefaultSlots = Array(16).fill(null)
+
+function loadAdvancementPrediction() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(advancementStorageKey))
+    const validTeams = new Set(Object.keys(teamMeta))
+    const assignedTeams = Array.isArray(stored) ? stored.filter(Boolean) : []
+    if (
+      Array.isArray(stored)
+      && stored.length === advancementDefaultSlots.length
+      && new Set(assignedTeams).size === assignedTeams.length
+      && stored.every(teamId => teamId === null || validTeams.has(teamId))
+    ) return stored
+  } catch {
+    // Fall back to empty slots when local data is invalid.
+  }
+  return [...advancementDefaultSlots]
+}
+
+const advancementSlots = ref(loadAdvancementPrediction())
+const advancementPicker = ref(null)
+const advancementSaving = ref(false)
+const advancementSummary = ref(null)
+const advancementTeamOptions = Object.entries(teamMeta).map(([id, meta]) => ({ id, meta }))
+const advancementAssignedCount = computed(() => advancementSlots.value.filter(Boolean).length)
+const advancementResultsPublished = computed(() => Boolean(advancementSummary.value?.resultsPublished))
+const advancementResultSlots = computed(() => advancementSummary.value?.resultSlots || [])
+const advancementLocked = computed(() => advancementSummary.value && !advancementSummary.value.acceptingPredictions)
+
+function advancementBucket(index) {
+  if (index === 0) return '4-0'
+  if (index <= 2) return '4-1'
+  if (index <= 7) return 'playin-winner'
+  if (index <= 12) return 'playin-loser'
+  if (index <= 14) return '1-4'
+  return '0-4'
+}
+
+function advancementCategory(index) {
+  if (index === 0) return '4-0 全胜'
+  if (index <= 2) return '4-1 晋级'
+  if (index <= 7) return '晋级附加赛胜者'
+  if (index <= 12) return '晋级附加赛败者'
+  if (index <= 14) return '1-4 淘汰'
+  return '0-4 全败'
+}
+
+function advancementOutcome(index, teamId) {
+  if (!advancementResultsPublished.value || !teamId) return null
+  const resultIndex = advancementResultSlots.value.indexOf(teamId)
+  if (resultIndex < 0) return 'incorrect'
+  return advancementBucket(index) === advancementBucket(resultIndex) ? 'correct' : 'incorrect'
+}
+
+function advancementOfficialCategory(teamId) {
+  const resultIndex = advancementResultSlots.value.indexOf(teamId)
+  return resultIndex >= 0 ? advancementCategory(resultIndex) : '未公布'
+}
+
+const advancementCloudStatusText = computed(() => {
+  if (advancementSaving.value) return '正在保存晋级预测到云端…'
+  if (advancementResultsPublished.value) return '官方结果已公布，预测已锁定并完成全站统计。'
+  if (advancementLocked.value) return '晋级预测已截止，当前内容不可修改。'
+  if (cloudActive.value) return `已自动保存到云端；填满 16 支队伍后计入全站统计，目前完整提交 ${advancementSummary.value?.totalPlayers || 0} 人。`
+  return '当前仅保存在本地；连接云端后会自动同步。'
+})
+
+function openAdvancementPicker(index) {
+  if (advancementSaving.value) return
+  if (advancementLocked.value) {
+    showToast(advancementResultsPublished.value ? '官方结果已公布，无法再修改' : '晋级预测已经截止')
+    return
+  }
+  advancementPicker.value = index
+}
+
+async function persistAdvancementSlots(nextSlots, successMessage) {
+  const previousSlots = [...advancementSlots.value]
+  advancementSlots.value = nextSlots
+  advancementPicker.value = null
+
+  if (!cloudActive.value) {
+    showToast(`${successMessage}，已保存在本地`)
+    return
+  }
+
+  advancementSaving.value = true
+  try {
+    advancementSummary.value = await submitCloudAdvancementPrediction(nextSlots)
+    showToast(`${successMessage}，已保存到云端`)
+  } catch (error) {
+    advancementSlots.value = previousSlots
+    showToast(error.message?.includes('locked') ? '晋级预测已经截止' : '云端保存失败，请稍后重试')
+  } finally {
+    advancementSaving.value = false
+  }
+}
+
+async function chooseAdvancementTeam(teamId) {
+  if (advancementPicker.value === null || !teamMeta[teamId]) return
+  const targetIndex = advancementPicker.value
+  const currentTeam = advancementSlots.value[targetIndex]
+  const sourceIndex = advancementSlots.value.indexOf(teamId)
+  if (sourceIndex === targetIndex) {
+    advancementPicker.value = null
+    return
+  }
+
+  const nextSlots = [...advancementSlots.value]
+  nextSlots[targetIndex] = teamId
+  if (sourceIndex >= 0) nextSlots[sourceIndex] = currentTeam
+  await persistAdvancementSlots(nextSlots, `已将 ${teamMeta[teamId].name} 调整至${advancementCategory(targetIndex)}`)
+}
+
+function closeAdvancementPicker() {
+  advancementPicker.value = null
+}
+
+async function clearAdvancementSlot() {
+  if (advancementPicker.value === null) return
+  const nextSlots = [...advancementSlots.value]
+  nextSlots[advancementPicker.value] = null
+  await persistAdvancementSlots(nextSlots, '已清空该晋级预测位置')
 }
 
 const swissStandings = [
@@ -276,6 +406,7 @@ function allBracketGames() {
 }
 
 const manualBracketGameIds = new Set(['u1', 'u2', 'u4', 'u7'])
+const bracketStorageKey = 'ti2026-entertainment-bracket-v1'
 const bracketFlow = {
   u1: { winner: ['u3', 'a'], loser: ['l1', 'a'] },
   u2: { winner: ['u3', 'b'], loser: ['l1', 'b'] },
@@ -343,6 +474,50 @@ function rebuildEntertainmentBracket() {
   })
 }
 
+function restoreEntertainmentBracket() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(bracketStorageKey))
+    if (!stored || typeof stored !== 'object') return
+
+    const usedTeams = new Set()
+    manualBracketGameIds.forEach(gameId => {
+      const game = bracketGameById(gameId)
+      if (!game) return
+      ;['a', 'b'].forEach(side => {
+        const teamId = stored.slots?.[gameId]?.[side]
+        if (!teamMeta[teamId] || usedTeams.has(teamId)) return
+        game[side] = teamId
+        usedTeams.add(teamId)
+      })
+    })
+
+    allBracketGames().forEach(game => {
+      const winner = stored.winners?.[String(game.id)]
+      if (teamMeta[winner]) game.winner = winner
+    })
+    rebuildEntertainmentBracket()
+  } catch {
+    // Ignore invalid local state and start with an empty entertainment bracket.
+  }
+}
+
+function saveEntertainmentBracket() {
+  const slots = {}
+  const winners = {}
+
+  manualBracketGameIds.forEach(gameId => {
+    const game = bracketGameById(gameId)
+    if (game) slots[gameId] = { a: game.a, b: game.b }
+  })
+  allBracketGames().forEach(game => {
+    if (game.winner) winners[String(game.id)] = game.winner
+  })
+
+  localStorage.setItem(bracketStorageKey, JSON.stringify({ slots, winners }))
+}
+
+restoreEntertainmentBracket()
+
 function sanitizeBracketPredictions(items) {
   const entertainmentMatchIds = new Set(allBracketGames().map(game => String(game.id)))
   return Object.fromEntries(Object.entries(items).filter(([id]) => !entertainmentMatchIds.has(String(id))))
@@ -366,6 +541,11 @@ const entertainmentChampion = computed(() => {
 })
 
 const predictionCount = computed(() => Object.keys(predictions.value).length)
+const groupPredictionCount = computed(() => Object.keys(predictions.value).filter(key => (
+  /^\d+$/.test(key) && Number(key) >= 1 && Number(key) <= 39
+)).length)
+const eliminationPredictionCount = computed(() => Object.keys(predictions.value).filter(key => /^e[1-5]$/.test(key)).length)
+const playoffPredictionCount = computed(() => allBracketGames().filter(game => game.winner).length)
 const allMatchRecords = [
   ...matches.value,
   ...eliminationMatches,
@@ -409,6 +589,16 @@ watch(predictions, value => {
 watch(voteTotals, value => {
   if (!cloudActive.value) localStorage.setItem('ti2026-vote-totals-v2', JSON.stringify(value))
 }, { deep: true })
+
+watch(advancementSlots, value => {
+  localStorage.setItem(advancementStorageKey, JSON.stringify(value))
+}, { deep: true })
+
+watch(
+  () => allBracketGames().map(game => [game.id, game.a, game.b, game.winner]),
+  saveEntertainmentBracket,
+  { deep: true },
+)
 
 function selectView(id) {
   const path = viewPaths[id] || '/'
@@ -579,6 +769,19 @@ onMounted(async () => {
     }
     cloudActive.value = true
     dataMode.value = 'online'
+
+    try {
+      let cloudAdvancement = await getCloudAdvancementPrediction()
+      if (Array.isArray(cloudAdvancement?.slots) && cloudAdvancement.slots.length === 16) {
+        advancementSlots.value = cloudAdvancement.slots
+      } else if (advancementAssignedCount.value > 0 && cloudAdvancement?.acceptingPredictions) {
+        cloudAdvancement = await submitCloudAdvancementPrediction(advancementSlots.value)
+      }
+      advancementSummary.value = cloudAdvancement
+    } catch (error) {
+      console.error('Supabase advancement prediction initialization failed:', error)
+      showToast('单场预测已连接，晋级预测云端功能尚未初始化')
+    }
   } catch (error) {
     console.error('Supabase prediction initialization failed:', error)
     dataMode.value = 'error'
@@ -648,7 +851,11 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
               <span class="rune rune-a">ᛏ</span><span class="rune rune-b">ᛉ</span><span class="rune rune-c">ᛋ</span>
             </div>
             <div class="hero-stats">
-              <div><span>已完成预测</span><strong>{{ predictionCount }}<small>/ {{ totalMatchCount }}</small></strong><em>正确率 {{ predictionAccuracy }}</em></div>
+              <h2>已完成预测</h2>
+              <div><span>小组赛</span><strong>{{ groupPredictionCount }}<small>/ 39</small></strong></div>
+              <div><span>晋级附加赛</span><strong>{{ eliminationPredictionCount }}<small>/ 5</small></strong></div>
+              <div><span>晋级预测</span><strong>{{ advancementAssignedCount }}<small>/ 16</small></strong></div>
+              <div><span>淘汰赛</span><strong>{{ playoffPredictionCount }}<small>/ 14</small></strong></div>
             </div>
           </section>
 
@@ -727,6 +934,39 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
           </div>
         </template>
 
+        <template v-else-if="activeView === 'advancement'">
+          <section class="page-title advancement-page-title"><div><span class="section-kicker">ROAD TO THE MAIN EVENT</span><h1>晋级预测</h1><p>将 16 支队伍分配到最终战绩区间，点击任意格子选择或调整队伍。</p></div><div class="stage-badge gold"><GitBranch :size="22" /><span>{{ advancementResultsPublished ? '官方结果' : '已分配队伍' }}<strong>{{ advancementResultsPublished ? '已公布' : `${advancementAssignedCount} / 16` }}</strong></span></div></section>
+          <section v-if="advancementResultsPublished" class="advancement-stats" aria-label="晋级预测结果统计">
+            <div><span>我的准确率</span><strong>{{ advancementSummary?.myAccuracy === null ? '—' : `${advancementSummary.myAccuracy}%` }}</strong><small>{{ advancementSummary?.myCorrectCount === null ? '完整填写后参与统计' : `正确 ${advancementSummary.myCorrectCount} / 16` }}</small></div>
+            <div><span>全站平均准确率</span><strong>{{ advancementSummary?.averageAccuracy === null ? '—' : `${advancementSummary.averageAccuracy}%` }}</strong><small>仅统计完整预测</small></div>
+            <div><span>我的全站排名</span><strong>{{ advancementSummary?.myRank ? `#${advancementSummary.myRank}` : '—' }}</strong><small>共 {{ advancementSummary?.totalPlayers || 0 }} 人参与</small></div>
+            <div><span>全部命中</span><strong>{{ advancementSummary?.perfectPlayers || 0 }}</strong><small>准确率 100% 的玩家</small></div>
+          </section>
+          <div class="advancement-board-scroll">
+            <section class="advancement-board" aria-label="小组赛晋级结果预测">
+              <div class="advancement-bands advancement-bands-top">
+                <div class="advancement-band" style="grid-column: 1 / span 1"><strong>4-0</strong><span>一支全胜的队伍</span></div>
+                <div class="advancement-band" style="grid-column: 2 / span 2"><strong>4-1</strong><span>两支四胜一负的队伍</span></div>
+                <div class="advancement-band" style="grid-column: 4 / span 5"><strong>晋级附加赛胜者</strong><span>五支在晋级附加赛胜出的队伍</span></div>
+              </div>
+              <div class="advancement-team-grid">
+                <button v-for="(teamId, index) in advancementSlots" :key="index" class="advancement-slot" :class="{ empty: !teamId, correct: advancementOutcome(index, teamId) === 'correct', incorrect: advancementOutcome(index, teamId) === 'incorrect' }" :aria-label="teamId ? `${advancementCategory(index)}：${team(teamId).name}，点击调整` : `${advancementCategory(index)}：待选择队伍`" @click="openAdvancementPicker(index)">
+                  <TeamLogo v-if="teamId" :meta="team(teamId)" />
+                  <span v-else class="advancement-empty-logo">?</span>
+                  <strong>{{ teamId ? team(teamId).name : '待选择' }}</strong>
+                  <small v-if="advancementResultsPublished && teamId">实际：{{ advancementOfficialCategory(teamId) }}</small>
+                </button>
+              </div>
+              <div class="advancement-bands advancement-bands-bottom">
+                <div class="advancement-band" style="grid-column: 1 / span 5"><span>五支在晋级附加赛失利的队伍</span><strong>晋级附加赛败者</strong></div>
+                <div class="advancement-band" style="grid-column: 6 / span 2"><span>两支一胜四负的队伍</span><strong>1-4</strong></div>
+                <div class="advancement-band" style="grid-column: 8 / span 1"><span>一支全败的队伍</span><strong>0-4</strong></div>
+              </div>
+            </section>
+          </div>
+          <div class="bracket-note"><Shield :size="18" /><span>{{ advancementCloudStatusText }}</span></div>
+        </template>
+
         <template v-else-if="activeView === 'playoffs'">
           <section class="page-title"><div><span class="section-kicker">MAIN EVENT · COLOGNE</span><h1>淘汰赛对阵</h1><p>点击首轮待定格选择队伍，再点击队伍选择胜者，晋级路径会自动填充；正式对阵将在小组赛结束后更新。</p></div><div class="stage-badge gold"><Trophy :size="22" /><span>娱乐模拟冠军<strong>{{ entertainmentChampion }}</strong></span></div></section>
           <div class="complete-bracket-meta"><span><CalendarDays :size="16" /> 8月22日—8月30日</span><span>胜者组与败者组完整对阵</span></div>
@@ -766,7 +1006,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
               </div>
             </div>
           </section>
-          <div class="bracket-note"><Shield :size="18" /><span>当前淘汰赛路径仅供娱乐，不保存、不参与预测统计；胜者进入下一轮，败者进入败者组，小组赛结束后将更新正式对阵。</span></div>
+          <div class="bracket-note"><Shield :size="18" /><span>当前淘汰赛路径仅供娱乐，只保存在当前浏览器、不参与预测统计；胜者进入下一轮，败者进入败者组，小组赛结束后将更新正式对阵。</span></div>
         </template>
 
         <template v-else>
@@ -817,6 +1057,22 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
               </button>
               <p v-if="!availableTeamOptions.length" class="bracket-picker-empty">所有队伍都已分配到格子中</p>
             </div>
+          </section>
+        </div>
+      </Transition>
+      <Transition name="modal">
+        <div v-if="advancementPicker !== null" class="bracket-picker-scrim" @click.self="closeAdvancementPicker">
+          <section class="bracket-picker advancement-picker" role="dialog" aria-modal="true" aria-labelledby="advancement-picker-title">
+            <header>
+              <div><span class="section-kicker">{{ advancementCategory(advancementPicker) }}</span><h2 id="advancement-picker-title">选择替换队伍</h2></div>
+              <button aria-label="关闭队伍选择" @click="closeAdvancementPicker"><X :size="20" /></button>
+            </header>
+            <div class="bracket-team-options advancement-team-options">
+              <button v-for="option in advancementTeamOptions" :key="option.id" :class="{ active: advancementSlots[advancementPicker] === option.id }" @click="chooseAdvancementTeam(option.id)">
+                <TeamLogo :meta="option.meta" compact /><span>{{ option.meta.name }}</span><small v-if="advancementSlots[advancementPicker] === option.id">当前</small>
+              </button>
+            </div>
+            <button v-if="advancementSlots[advancementPicker]" class="advancement-clear-action" @click="clearAdvancementSlot"><X :size="16" /> 清空当前格</button>
           </section>
         </div>
       </Transition>

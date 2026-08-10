@@ -24,6 +24,26 @@ function totalsToMap(rows = []) {
   }, {})
 }
 
+function advancementSummaryFromRows(rows = []) {
+  const row = rows?.[0]
+  if (!row) return null
+  const numberOrNull = value => value === null || value === undefined ? null : Number(value)
+  return {
+    slots: Array.isArray(row.prediction_slots) ? row.prediction_slots : null,
+    acceptingPredictions: Boolean(row.accepting_predictions),
+    lockAt: row.lock_at || null,
+    resultsPublished: Boolean(row.results_published),
+    resultSlots: Array.isArray(row.result_slots) ? row.result_slots : null,
+    selectedCount: Number(row.selected_count || 0),
+    myCorrectCount: numberOrNull(row.my_correct_count),
+    myAccuracy: numberOrNull(row.my_accuracy),
+    totalPlayers: Number(row.total_players || 0),
+    averageAccuracy: numberOrNull(row.average_accuracy),
+    perfectPlayers: Number(row.perfect_players || 0),
+    myRank: numberOrNull(row.my_rank),
+  }
+}
+
 async function ensureAnonymousSession() {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
   if (sessionError) throw sessionError
@@ -83,4 +103,24 @@ export async function submitCloudPrediction(matchKey, selectedTeam, matchKeys) {
   })
   if (totalsError) throw totalsError
   return totalsToMap(data)
+}
+
+export async function getCloudAdvancementPrediction() {
+  if (!supabase) return null
+  await ensureAnonymousSession()
+
+  const { data, error } = await supabase.rpc('get_advancement_prediction_summary')
+  if (error) throw error
+  return advancementSummaryFromRows(data)
+}
+
+export async function submitCloudAdvancementPrediction(slots) {
+  if (!supabase) throw new Error('Supabase is not configured')
+  await ensureAnonymousSession()
+
+  const { error } = await supabase.rpc('submit_advancement_prediction', {
+    p_slots: slots,
+  })
+  if (error) throw error
+  return getCloudAdvancementPrediction()
 }
