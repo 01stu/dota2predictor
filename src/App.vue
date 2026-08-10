@@ -1,9 +1,9 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
-  ArrowRight, CalendarDays, ChevronDown, Clock3, Database,
-  LayoutDashboard, ListOrdered, Medal, Menu, Pencil, Radio, Shield, Sparkles, Swords,
-  Target, Trophy, UserRound, Users, X
+  ArrowRight, CalendarDays, CheckCircle2, ChevronDown, Clock3, Database,
+  LayoutDashboard, ListOrdered, Menu, Pencil, Radio, Shield, Sparkles, Swords,
+  Target, Trophy, UserRound, Users, X, XCircle
 } from 'lucide-vue-next'
 import TeamLogo from './components/TeamLogo.vue'
 import { heroes } from './data/heroes'
@@ -370,10 +370,19 @@ const allMatchRecords = [
   ...matches.value,
   ...eliminationMatches,
 ]
-const resolvedMatchCount = computed(() => allMatchRecords.filter(match => match.winner).length)
-const correctPredictionCount = computed(() => allMatchRecords.filter(match => (
-  match.winner && predictions.value[String(match.id)] === match.winner
-)).length)
+const predictionRecords = computed(() => allMatchRecords
+  .filter(match => predictions.value[String(match.id)])
+  .map(match => {
+    const chosen = predictions.value[String(match.id)]
+    const outcome = !match.winner
+      ? { state: 'pending', label: '结果待揭晓' }
+      : chosen === match.winner
+        ? { state: 'correct', label: '预测正确' }
+        : { state: 'incorrect', label: '预测错误' }
+    return { ...match, chosen, outcome }
+  }))
+const resolvedMatchCount = computed(() => predictionRecords.value.filter(match => match.outcome.state !== 'pending').length)
+const correctPredictionCount = computed(() => predictionRecords.value.filter(match => match.outcome.state === 'correct').length)
 const predictionAccuracy = computed(() => (
   resolvedMatchCount.value ? `${Math.round(correctPredictionCount.value / resolvedMatchCount.value * 100)}%` : '—'
 ))
@@ -763,13 +772,36 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
         <template v-else>
           <section class="page-title"><div><span class="section-kicker">MY PREDICTIONS</span><h1>我的预测</h1><p>已完成 {{ predictionCount }} 项预测，继续完善你的 TI 2026 晋级图。</p></div><div class="stage-badge"><Target :size="22" /><span>预测完成度<strong>{{ Math.round(predictionCount / totalMatchCount * 100) }}%</strong></span></div></section>
           <div v-if="predictionCount" class="picks-grid">
-            <article v-for="(chosen, id) in predictions" :key="id" class="pick-summary">
-              <TeamLogo :meta="team(chosen)" compact />
-              <div><small>对局 #{{ id }} · {{ votesFor(id, chosen) }}票 · {{ percentFor(id, chosen) }}%</small><strong>{{ team(chosen).name }}</strong></div>
-              <Medal :size="20" />
+            <article v-for="match in predictionRecords" :key="match.id" class="match-card pick-summary" :class="`is-${match.outcome.state}`">
+              <div class="match-meta">
+                <span><Clock3 :size="13" /> {{ match.time }}</span>
+                <span>{{ match.group }} · {{ match.bestOf }}</span>
+              </div>
+              <div class="match-versus">
+                <div class="team-pick" :class="{ chosen: match.chosen === match.a, winner: match.winner === match.a }">
+                  <TeamLogo :meta="team(match.a)" />
+                  <strong>{{ team(match.a).name }}</strong>
+                  <small>{{ match.chosen === match.a ? '你的预测' : (match.winner === match.a ? '比赛胜者' : '对阵队伍') }}</small>
+                </div>
+                <div class="vs"><span>VS</span><small>{{ match.score && match.score !== '—' ? match.score : match.bestOf }}</small></div>
+                <div class="team-pick" :class="{ chosen: match.chosen === match.b, winner: match.winner === match.b }">
+                  <TeamLogo :meta="team(match.b)" />
+                  <strong>{{ team(match.b).name }}</strong>
+                  <small>{{ match.chosen === match.b ? '你的预测' : (match.winner === match.b ? '比赛胜者' : '对阵队伍') }}</small>
+                </div>
+              </div>
+              <footer class="pick-card-result">
+                <span class="pick-outcome" :class="match.outcome.state">
+                  <Clock3 v-if="match.outcome.state === 'pending'" :size="15" />
+                  <CheckCircle2 v-else-if="match.outcome.state === 'correct'" :size="15" />
+                  <XCircle v-else :size="15" />
+                  {{ match.outcome.label }}
+                </span>
+                <span>{{ team(match.chosen).name }} · {{ percentFor(match.id, match.chosen) }}%</span>
+              </footer>
             </article>
           </div>
-          <div class="empty-panel"><img src="https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/ti2026_logo.png" alt="TI 2026 官方徽标" /><div><h2>构筑你的冠军之路</h2><p>前往小组赛和淘汰赛页面，选择你看好的战队。</p><button class="primary" @click="selectView('playoffs')">继续预测 <ArrowRight :size="17" /></button></div></div>
+          <div v-else class="empty-panel"><img src="https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/ti2026_logo.png" alt="TI 2026 官方徽标" /><div><h2>构筑你的冠军之路</h2><p>前往小组赛，选择你看好的战队。</p><button class="primary" @click="selectView('groups')">开始预测 <ArrowRight :size="17" /></button></div></div>
         </template>
       </div>
       <Transition name="modal">
