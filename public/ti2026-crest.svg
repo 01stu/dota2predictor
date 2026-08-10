@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 144" role="img" aria-labelledby="title">
+  <title id="title">TI 2026 tournament crest</title>
+  <defs>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0d8aa"/>
+      <stop offset=".48" stop-color="#b89158"/>
+      <stop offset="1" stop-color="#76502f"/>
+    </linearGradient>
+    <linearGradient id="ember" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#6b1617"/>
+      <stop offset="1" stop-color="#d3452c"/>
+    </linearGradient>
+  </defs>
+  <path d="M60 4 108 25v45c0 30-17 53-48 69C29 123 12 100 12 70V25L60 4Z" fill="#111116" stroke="url(#metal)" stroke-width="3"/>
+  <path d="M60 14 98 31v37c0 24-12 42-38 57-26-15-38-33-38-57V31L60 14Z" fill="url(#ember)" opacity=".72"/>
+  <path d="m35 42 16-9 7 18 20-17 8 38-16 23-22-3-15-28 12 2-10-24Zm18 19-9 16 16 8 12-18-19-6Z" fill="url(#metal)"/>
+  <path d="M26 105h68" stroke="#e5c38f" stroke-width="2"/>
+  <text x="60" y="118" fill="#f2d8ac" font-size="11" text-anchor="middle" font-family="Georgia,serif" font-weight="700">MMXXVI</text>
+</svg>
