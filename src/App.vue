@@ -799,7 +799,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
 
     <aside class="sidebar" :class="{ open: mobileMenu }">
       <div class="brand">
-        <img src="https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/ti2026_logo.png" alt="TI 2026 官方徽标" />
+        <img src="/ti2026_logo.png" alt="TI 2026 官方徽标" />
         <div><strong>THE INTERNATIONAL</strong><span>2026 PREDICTOR</span></div>
       </div>
       <button class="close-menu" aria-label="关闭菜单" @click="mobileMenu = false"><X :size="20" /></button>
@@ -847,7 +847,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
             <div class="hero-visual" aria-hidden="true">
               <div class="aegis-ring ring-outer"></div>
               <div class="aegis-ring ring-inner"></div>
-              <img src="https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/ti2026_logo.png" alt="" />
+              <img src="/ti2026_logo.png" alt="" />
               <span class="rune rune-a">ᛏ</span><span class="rune rune-b">ᛉ</span><span class="rune rune-c">ᛋ</span>
             </div>
             <div class="hero-stats">
@@ -1041,7 +1041,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
               </footer>
             </article>
           </div>
-          <div v-else class="empty-panel"><img src="https://cdn.steamstatic.com/apps/dota2/images/dota_react/international2026/ti2026_logo.png" alt="TI 2026 官方徽标" /><div><h2>构筑你的冠军之路</h2><p>前往小组赛，选择你看好的战队。</p><button class="primary" @click="selectView('groups')">开始预测 <ArrowRight :size="17" /></button></div></div>
+          <div v-else class="empty-panel"><img src="/ti2026_logo.png" alt="TI 2026 官方徽标" /><div><h2>构筑你的冠军之路</h2><p>前往小组赛，选择你看好的战队。</p><button class="primary" @click="selectView('groups')">开始预测 <ArrowRight :size="17" /></button></div></div>
         </template>
       </div>
       <Transition name="modal">

@@ -16,7 +16,7 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: #0c0d0f url('https://cdn.steamstatic.com/apps/dota2/images/dota_react/backgrounds/bg_granite_texture_sched.jpg') center top / cover fixed; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #0c0d0f url('/bg_granite_texture_sched.jpg') center top / cover fixed; }
 button { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 270px 1fr; position: relative; overflow: hidden; background: linear-gradient(90deg, rgba(7,8,10,.92), rgba(12,13,15,.76) 45%, rgba(9,10,12,.9)); }
@@ -64,7 +64,7 @@ main { min-width: 0; min-height: 100vh; position: relative; z-index: 2; display:
 .site-footer a { color: #b89a66; text-decoration: none; }
 .site-footer a:hover { color: #e1c58f; text-decoration: underline; text-underline-offset: 3px; }
 
-.hero-band { min-height: 410px; position: relative; overflow: hidden; border: 1px solid rgba(198,166,106,.18); display: grid; grid-template-columns: 1.08fr .9fr; padding: 52px 58px 36px; background: linear-gradient(90deg, rgba(14,14,17,.97) 0%, rgba(14,14,17,.88) 44%, rgba(19,18,21,.42) 100%), url('https://cdn.steamstatic.com/apps/dota2/images/dota_react/dpc/headers/dpc_header_event_ti15.png') center right / cover no-repeat; }
+.hero-band { min-height: 410px; position: relative; overflow: hidden; border: 1px solid rgba(198,166,106,.18); display: grid; grid-template-columns: 1.08fr .9fr; padding: 52px 58px 36px; background: linear-gradient(90deg, rgba(14,14,17,.97) 0%, rgba(14,14,17,.88) 44%, rgba(19,18,21,.42) 100%), url('/dpc_header_event_ti15.png') center right / cover no-repeat; }
 .hero-band::before { content: ''; position: absolute; inset: 0; opacity: .09; background-image: repeating-linear-gradient(115deg, transparent 0 32px, #fff 33px, transparent 34px 70px); mask-image: linear-gradient(90deg, transparent 45%, #000); }
 .hero-copy { position: relative; z-index: 2; }
 .eyebrow, .section-kicker { color: var(--gold); font: 600 13px var(--display); letter-spacing: 2.1px; }
