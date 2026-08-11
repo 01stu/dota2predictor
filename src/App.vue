@@ -855,7 +855,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
               <h2>已完成预测</h2>
               <button class="hero-stat-link" aria-label="前往小组赛预测" @click="selectView('groups')"><span>小组赛</span><strong>{{ groupPredictionCount }}<small>/ 39</small></strong><ArrowRight :size="16" /></button>
               <button class="hero-stat-link" aria-label="前往晋级附加赛预测" @click="selectView('elimination')"><span>晋级附加赛</span><strong>{{ eliminationPredictionCount }}<small>/ 5</small></strong><ArrowRight :size="16" /></button>
-              <button class="hero-stat-link" aria-label="前往晋级预测" @click="selectView('advancement')"><span>晋级预测</span><strong>{{ advancementAssignedCount }}<small>/ 16</small></strong><ArrowRight :size="16" /></button>
+              <button class="hero-stat-link" aria-label="前往晋级预测" @click="selectView('advancement')"><span>晋级预测<small class="hero-stat-deadline">截止时间: 8月13日10:00</small></span><strong>{{ advancementAssignedCount }}<small>/ 16</small></strong><ArrowRight :size="16" /></button>
               <button class="hero-stat-link" aria-label="前往淘汰赛预测" @click="selectView('playoffs')"><span>淘汰赛</span><strong>{{ playoffPredictionCount }}<small>/ 14</small></strong><ArrowRight :size="16" /></button>
             </div>
           </section>
