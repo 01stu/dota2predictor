@@ -2,12 +2,13 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   ArrowRight, CalendarDays, CheckCircle2, ChevronDown, Clock3, Database,
-  GitBranch, LayoutDashboard, ListOrdered, Menu, Pencil, Radio, Shield, Sparkles, Swords,
+  GitBranch, LayoutDashboard, ListOrdered, Menu, Pencil, Radio, RotateCcw, Shield, Sparkles, Swords,
   Target, Trophy, UserRound, Users, X, XCircle
 } from 'lucide-vue-next'
 import TeamLogo from './components/TeamLogo.vue'
 import { heroes } from './data/heroes'
 import { playerIds } from './data/playerIds'
+import { buildSwissSimulation } from './services/swissSimulation'
 import {
   getCloudAdvancementPrediction,
   initializePredictionStore,
@@ -276,6 +277,127 @@ const matches = ref([
   { id: 7, time: '8月13日 13:00', group: '瑞士轮 · 第1轮', bestOf: 'BO3', a: 'Aurora', b: 'GamerLegion', score: '—', status: 'upcoming' },
   { id: 8, time: '8月13日 13:00', group: '瑞士轮 · 第1轮', bestOf: 'BO3', a: 'Yandex', b: 'Huligani', score: '—', status: 'upcoming' },
 ])
+
+const groupScheduleModeStorageKey = 'ti2026-group-schedule-mode-v1'
+const swissSimulationStorageKey = 'ti2026-swiss-simulation-v1'
+const swissSimulationPlayInStorageKey = 'ti2026-swiss-simulation-playin-v1'
+
+function loadSwissSimulationPicks() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(swissSimulationStorageKey))
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {}
+  } catch {
+    return {}
+  }
+}
+
+function loadSwissSimulationPlayIn() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(swissSimulationPlayInStorageKey))
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {}
+  } catch {
+    return {}
+  }
+}
+
+const groupScheduleMode = ref(localStorage.getItem(groupScheduleModeStorageKey) === 'prediction' ? 'prediction' : 'real')
+const swissSimulationPicks = ref(loadSwissSimulationPicks())
+const swissSimulationPlayIn = ref(loadSwissSimulationPlayIn())
+const simulationOpponentPicker = ref(null)
+const swissSimulation = computed(() => buildSwissSimulation(swissSimulationPicks.value))
+const activeSimulationRound = computed(() => swissSimulation.value.rounds.find(round => round.round === activeSwissRound.value) || null)
+const simulationStandingsRows = computed(() => swissSimulation.value.standings.map(row => ({
+  ...row,
+  rounds: swissRounds.map(roundNumber => {
+    const match = swissSimulation.value.rounds.find(round => round.round === roundNumber)?.matches.find(item => item.a === row.team || item.b === row.team)
+    if (!match) return { opponent: null, result: null }
+    return {
+      opponent: match.a === row.team ? match.b : match.a,
+      result: match.winner ? (match.winner === row.team ? 'win' : 'loss') : null,
+    }
+  }),
+})))
+const simulationNextSelector = computed(() => swissSimulation.value.playInSelectors.find(row => !swissSimulationPlayIn.value[row.team])?.team || null)
+const simulationAvailableOpponents = computed(() => {
+  const selector = simulationOpponentPicker.value
+  const used = new Set(Object.entries(swissSimulationPlayIn.value).filter(([team]) => team !== selector).map(([, opponent]) => opponent))
+  return swissSimulation.value.playInOpponents.filter(row => !used.has(row.team))
+})
+
+function selectGroupScheduleMode(mode) {
+  if (!['real', 'prediction'].includes(mode)) return
+  groupScheduleMode.value = mode
+  localStorage.setItem(groupScheduleModeStorageKey, mode)
+  activeSwissRound.value = 1
+}
+
+function selectSwissRound(round) {
+  if (groupScheduleMode.value === 'prediction' && !swissSimulation.value.rounds.some(item => item.round === round)) return
+  activeSwissRound.value = round
+}
+
+function simulationRoundStatus(round) {
+  const generated = swissSimulation.value.rounds.find(item => item.round === round)
+  if (!generated) return '等待上一轮'
+  if (round === 1) return '初始对阵'
+  return generated.completed ? '已完成' : '已生成'
+}
+
+function simulationStandingZone(row) {
+  if (row.wins >= 4) return 'advance'
+  if (row.losses >= 4) return 'eliminated'
+  return 'active'
+}
+
+function pickSimulationWinner(match, teamId) {
+  if (teamId !== match.a && teamId !== match.b) return
+  if (swissSimulationPicks.value[match.id] === teamId) return
+  const nextPicks = Object.fromEntries(Object.entries(swissSimulationPicks.value).filter(([id]) => {
+    const round = Number(id.match(/^sim-r(\d+)-/)?.[1] || 0)
+    return round <= match.round
+  }))
+  nextPicks[match.id] = teamId
+  swissSimulationPicks.value = nextPicks
+  swissSimulationPlayIn.value = {}
+  localStorage.setItem(swissSimulationStorageKey, JSON.stringify(nextPicks))
+  localStorage.removeItem(swissSimulationPlayInStorageKey)
+
+  const completedRound = swissSimulation.value.rounds.find(round => round.round === match.round)?.completed
+  if (completedRound && match.round < 5) {
+    activeSwissRound.value = match.round + 1
+    showToast(`第 ${match.round + 1} 轮模拟对阵已生成`)
+  } else {
+    showToast(`已选择 ${teamMeta[teamId]?.name || teamId} 获胜`)
+  }
+}
+
+function resetSwissSimulation() {
+  swissSimulationPicks.value = {}
+  swissSimulationPlayIn.value = {}
+  simulationOpponentPicker.value = null
+  activeSwissRound.value = 1
+  localStorage.removeItem(swissSimulationStorageKey)
+  localStorage.removeItem(swissSimulationPlayInStorageKey)
+  showToast('预测模式已重置')
+}
+
+function openSimulationOpponentPicker(teamId) {
+  const selectors = swissSimulation.value.playInSelectors.map(row => row.team)
+  const index = selectors.indexOf(teamId)
+  if (index < 0 || selectors.slice(0, index).some(teamIdBefore => !swissSimulationPlayIn.value[teamIdBefore])) {
+    showToast('请按 3-2 队伍排名顺序选择对手')
+    return
+  }
+  simulationOpponentPicker.value = teamId
+}
+
+function chooseSimulationOpponent(opponentId) {
+  if (!simulationOpponentPicker.value || !simulationAvailableOpponents.value.some(row => row.team === opponentId)) return
+  swissSimulationPlayIn.value = { ...swissSimulationPlayIn.value, [simulationOpponentPicker.value]: opponentId }
+  localStorage.setItem(swissSimulationPlayInStorageKey, JSON.stringify(swissSimulationPlayIn.value))
+  simulationOpponentPicker.value = null
+  showToast('晋级附加赛对手已选择')
+}
 
 const eliminationMatches = [
   { id: 'e1', time: '8月20日 10:00', group: '晋级附加赛', bestOf: 'BO3', a: null, b: null, recordA: '3-2', recordB: '2-3' },
@@ -863,14 +985,22 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
         </template>
 
         <template v-else-if="activeView === 'groups'">
-          <section class="page-title"><div><span class="section-kicker">SWISS STAGE · FIVE ROUNDS</span><h1>小组赛程</h1><p>瑞士轮共进行五轮，所有比赛均为 BO3；点击队伍即可提交胜负预测。</p></div><div class="stage-badge"><CalendarDays :size="22" /><span>{{ activeSwissRound === 1 ? '比赛日' : '赛程状态' }}<strong>{{ activeSwissRound === 1 ? '8月13日' : '待公布' }}</strong></span></div></section>
+          <section class="page-title"><div><span class="section-kicker">SWISS STAGE · FIVE ROUNDS</span><h1>小组赛程</h1><p>{{ groupScheduleMode === 'real' ? '真实模式展示官方赛程与全站胜负预测。' : '预测模式根据你的胜负选择，按瑞士轮规则自动生成后续对阵。' }}</p></div><div class="stage-badge"><CalendarDays :size="22" /><span>{{ groupScheduleMode === 'real' ? (activeSwissRound === 1 ? '比赛日' : '赛程状态') : '模拟进度' }}<strong>{{ groupScheduleMode === 'real' ? (activeSwissRound === 1 ? '8月13日' : '待公布') : `${swissSimulation.completedRounds} / 5 轮` }}</strong></span></div></section>
+          <div class="group-mode-toolbar">
+            <div class="group-mode-switch" role="tablist" aria-label="小组赛模式">
+              <button role="tab" :aria-selected="groupScheduleMode === 'real'" :class="{ active: groupScheduleMode === 'real' }" @click="selectGroupScheduleMode('real')">真实模式</button>
+              <button role="tab" :aria-selected="groupScheduleMode === 'prediction'" :class="{ active: groupScheduleMode === 'prediction' }" @click="selectGroupScheduleMode('prediction')">预测模式</button>
+            </div>
+            <span>{{ groupScheduleMode === 'real' ? '使用官方公布的真实对阵，预测计入全站数据。' : '娱乐模拟，仅保存在当前浏览器，不计入全站统计。' }}</span>
+            <button v-if="groupScheduleMode === 'prediction'" class="simulation-reset" title="重置预测模式" @click="resetSwissSimulation"><RotateCcw :size="15" />重置模拟</button>
+          </div>
           <div class="round-tabs" role="tablist" aria-label="瑞士轮赛程轮次">
-            <button v-for="round in swissRounds" :key="round" role="tab" :aria-selected="activeSwissRound === round" :class="{ active: activeSwissRound === round }" @click="activeSwissRound = round">
-              <span>第 {{ round }} 轮</span><small>{{ round === 1 ? '8月13日' : '待公布' }}</small>
+            <button v-for="round in swissRounds" :key="round" role="tab" :aria-selected="activeSwissRound === round" :class="{ active: activeSwissRound === round, locked: groupScheduleMode === 'prediction' && !swissSimulation.rounds.some(item => item.round === round) }" :disabled="groupScheduleMode === 'prediction' && !swissSimulation.rounds.some(item => item.round === round)" @click="selectSwissRound(round)">
+              <span>第 {{ round }} 轮</span><small>{{ groupScheduleMode === 'real' ? (round === 1 ? '8月13日' : '待公布') : simulationRoundStatus(round) }}</small>
             </button>
           </div>
-          <section class="section-heading schedule-heading"><div><span class="section-kicker">ROUND {{ activeSwissRound }} · BEIJING TIME</span><h2>第 {{ activeSwissRound }} 轮赛程</h2></div><span class="muted">{{ activeSwissRound === 1 ? `共 ${matches.length} 场` : '对阵待公布' }} · BO3</span></section>
-          <div v-if="activeSwissRound === 1" class="match-grid schedule-match-grid">
+          <section class="section-heading schedule-heading"><div><span class="section-kicker">ROUND {{ activeSwissRound }} · {{ groupScheduleMode === 'real' ? 'BEIJING TIME' : 'SIMULATION' }}</span><h2>第 {{ activeSwissRound }} 轮{{ groupScheduleMode === 'real' ? '赛程' : '模拟对阵' }}</h2></div><span class="muted">{{ groupScheduleMode === 'real' ? (activeSwissRound === 1 ? `共 ${matches.length} 场` : '对阵待公布') : (activeSimulationRound ? `共 ${activeSimulationRound.matches.length} 场` : '等待上一轮完成') }} · BO3</span></section>
+          <div v-if="groupScheduleMode === 'real' && activeSwissRound === 1" class="match-grid schedule-match-grid">
             <article v-for="match in matches" :key="match.id" class="match-card">
               <div class="match-meta"><span><Clock3 :size="13" /> {{ match.time }}</span><span>{{ match.group }} · {{ match.bestOf }}</span></div>
               <div class="match-versus">
@@ -890,33 +1020,102 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
               </div>
             </article>
           </div>
-          <section v-else class="round-empty-state">
+          <section v-else-if="groupScheduleMode === 'real'" class="round-empty-state">
             <span class="round-empty-icon"><CalendarDays :size="30" /></span>
             <div><span class="section-kicker">ROUND {{ activeSwissRound }}</span><h2>第 {{ activeSwissRound }} 轮对阵待公布</h2><p>上一轮结束后，将根据各队当前战绩生成本轮对阵。</p></div>
+          </section>
+          <div v-else-if="activeSimulationRound" class="match-grid schedule-match-grid simulation-match-grid">
+            <article v-for="match in activeSimulationRound.matches" :key="match.id" class="match-card simulation-match-card">
+              <div class="match-meta"><span><Clock3 :size="13" /> {{ match.time }}</span><span>{{ match.record }} 战绩组 · {{ match.bestOf }}</span></div>
+              <div class="match-versus">
+                <button :class="['team-pick', { selected: swissSimulationPicks[match.id] === match.a }]" @click="pickSimulationWinner(match, match.a)">
+                  <TeamLogo :meta="team(match.a)" />
+                  <strong>{{ team(match.a).name }}</strong><small>{{ swissSimulationPicks[match.id] === match.a ? '模拟胜者' : '选择胜者' }}</small>
+                </button>
+                <div class="vs"><span>VS</span><small>{{ match.bestOf }}</small></div>
+                <button :class="['team-pick', { selected: swissSimulationPicks[match.id] === match.b }]" @click="pickSimulationWinner(match, match.b)">
+                  <TeamLogo :meta="team(match.b)" />
+                  <strong>{{ team(match.b).name }}</strong><small>{{ swissSimulationPicks[match.id] === match.b ? '模拟胜者' : '选择胜者' }}</small>
+                </button>
+              </div>
+              <div class="simulation-match-footer"><span>{{ match.record }} 战绩组</span><strong>{{ swissSimulationPicks[match.id] ? `${team(swissSimulationPicks[match.id]).name} 获胜` : '等待选择结果' }}</strong></div>
+            </article>
+          </div>
+          <section v-else class="round-empty-state">
+            <span class="round-empty-icon"><GitBranch :size="30" /></span>
+            <div><span class="section-kicker">ROUND {{ activeSwissRound }}</span><h2>完成上一轮后自动生成</h2><p>系统会根据战绩、初始分组、历史对手和当前排名生成对阵。</p></div>
+          </section>
+
+          <section v-if="groupScheduleMode === 'prediction'" class="simulation-standings">
+            <div class="simulation-section-head"><div><span class="section-kicker">SIMULATED STANDINGS</span><h2>当前模拟排名</h2></div><span>胜负相同按对手分与初始顺位排序</span></div>
+            <div class="simulation-standing-grid">
+              <article v-for="row in swissSimulation.standings" :key="row.team" :class="{ advance: row.wins >= 4, eliminated: row.losses >= 4, playin: row.wins + row.losses === 5 && row.wins < 4 && row.losses < 4 }">
+                <span class="simulation-rank">{{ row.rank }}</span><TeamLogo :meta="team(row.team)" compact /><strong>{{ team(row.team).name }}</strong><b>{{ row.wins }}-{{ row.losses }}</b><small>{{ row.status }}</small>
+              </article>
+            </div>
+          </section>
+
+          <section v-if="groupScheduleMode === 'prediction' && swissSimulation.finished" class="simulation-playin">
+            <div class="simulation-section-head"><div><span class="section-kicker">ELIMINATION ROUND</span><h2>模拟晋级附加赛选对手</h2></div><span>3-2 队伍按排名依次选择尚未被选择的 2-3 队伍</span></div>
+            <div class="simulation-playin-grid">
+              <article v-for="selector in swissSimulation.playInSelectors" :key="selector.team">
+                <div class="simulation-playin-team"><span class="simulation-pick-order">#{{ selector.rank }}</span><TeamLogo :meta="team(selector.team)" compact /><strong>{{ team(selector.team).name }}</strong><small>3-2</small></div>
+                <span class="simulation-playin-vs">选择对手</span>
+                <button :disabled="selector.team !== simulationNextSelector && !swissSimulationPlayIn[selector.team]" @click="openSimulationOpponentPicker(selector.team)">
+                  <TeamLogo v-if="swissSimulationPlayIn[selector.team]" :meta="team(swissSimulationPlayIn[selector.team])" compact />
+                  <span v-else class="simulation-opponent-placeholder">?</span>
+                  <strong>{{ swissSimulationPlayIn[selector.team] ? team(swissSimulationPlayIn[selector.team]).name : (selector.team === simulationNextSelector ? '选择 2-3 对手' : '等待前队选择') }}</strong>
+                  <small>{{ swissSimulationPlayIn[selector.team] ? '2-3' : '待选择' }}</small>
+                </button>
+              </article>
+            </div>
           </section>
         </template>
 
         <template v-else-if="activeView === 'standings'">
-          <section class="page-title"><div><span class="section-kicker">SWISS STAGE · FIVE ROUNDS</span><h1>小组赛排名</h1><p>16 支战队进行最多五轮 BO3，4 胜直接晋级，4 负淘汰；3-2 与 2-3 进入晋级附加赛。</p></div><div class="stage-badge"><ListOrdered :size="22" /><span>晋级规则<strong>4 胜直接晋级</strong></span></div></section>
+          <section class="page-title"><div><span class="section-kicker">SWISS STAGE · FIVE ROUNDS</span><h1>小组赛排名</h1><p>{{ groupScheduleMode === 'real' ? '展示官方公布的真实战绩、排名和各轮对手。' : '根据小组赛预测模式中的胜负选择，实时计算模拟排名与晋级状态。' }}</p></div><div class="stage-badge"><ListOrdered :size="22" /><span>{{ groupScheduleMode === 'real' ? '晋级规则' : '模拟进度' }}<strong>{{ groupScheduleMode === 'real' ? '4 胜直接晋级' : `${swissSimulation.completedRounds} / 5 轮` }}</strong></span></div></section>
+          <div class="group-mode-toolbar standings-mode-toolbar">
+            <div class="group-mode-switch" role="tablist" aria-label="小组赛排名模式">
+              <button role="tab" :aria-selected="groupScheduleMode === 'real'" :class="{ active: groupScheduleMode === 'real' }" @click="selectGroupScheduleMode('real')">真实模式</button>
+              <button role="tab" :aria-selected="groupScheduleMode === 'prediction'" :class="{ active: groupScheduleMode === 'prediction' }" @click="selectGroupScheduleMode('prediction')">预测模式</button>
+            </div>
+            <span>{{ groupScheduleMode === 'real' ? '排名将随官方比赛结果更新。' : '与小组赛预测模式共用数据，修改胜负后此处自动同步。' }}</span>
+            <button v-if="groupScheduleMode === 'prediction'" class="simulation-reset" @click="selectView('groups')">继续填写预测<ArrowRight :size="15" /></button>
+          </div>
           <section class="swiss-section">
-            <div class="swiss-section-head"><div><span class="section-kicker">CURRENT STANDINGS</span><h2>小组赛对阵与排名</h2></div><span class="status-note"><span class="live-dot"></span> 第 1 轮待开始</span></div>
+            <div class="swiss-section-head"><div><span class="section-kicker">{{ groupScheduleMode === 'real' ? 'CURRENT STANDINGS' : 'SIMULATED STANDINGS' }}</span><h2>{{ groupScheduleMode === 'real' ? '小组赛对阵与排名' : '预测模式对阵与排名' }}</h2></div><span class="status-note"><span class="live-dot"></span> {{ groupScheduleMode === 'real' ? '第 1 轮待开始' : `已完成 ${swissSimulation.completedRounds} 轮` }}</span></div>
             <div class="swiss-table-scroll">
               <div class="swiss-table">
-                <div class="swiss-row swiss-head"><span>#</span><span>参赛队伍</span><span>比赛</span><span>局分</span><span>第 1 轮</span><span>第 2 轮</span><span>第 3 轮</span><span>第 4 轮</span><span>第 5 轮</span></div>
-                <div v-for="row in swissStandings" :key="row.team" class="swiss-row" :class="`zone-${row.zone}`">
-                  <span class="swiss-rank">{{ row.rank }}</span>
-                  <span class="swiss-team"><TeamLogo :meta="team(row.team)" compact /><strong>{{ team(row.team).name }}</strong></span>
-                  <strong class="swiss-record">{{ row.matches }}</strong>
-                  <span class="swiss-record">{{ row.games }}</span>
-                  <span v-for="(opponent, roundIndex) in row.rounds" :key="roundIndex" class="swiss-round-cell" :title="opponent ? `第 ${roundIndex + 1} 轮对阵 ${team(opponent).name}` : `第 ${roundIndex + 1} 轮待定`">
-                    <TeamLogo v-if="opponent" :meta="team(opponent)" compact />
-                    <i v-else></i>
-                  </span>
-                </div>
+                <div class="swiss-row swiss-head"><span>#</span><span>参赛队伍</span><span>{{ groupScheduleMode === 'real' ? '比赛' : '战绩' }}</span><span>{{ groupScheduleMode === 'real' ? '局分' : '对手分' }}</span><span>第 1 轮</span><span>第 2 轮</span><span>第 3 轮</span><span>第 4 轮</span><span>第 5 轮</span></div>
+                <template v-if="groupScheduleMode === 'real'">
+                  <div v-for="row in swissStandings" :key="row.team" class="swiss-row" :class="`zone-${row.zone}`">
+                    <span class="swiss-rank">{{ row.rank }}</span>
+                    <span class="swiss-team"><TeamLogo :meta="team(row.team)" compact /><strong>{{ team(row.team).name }}</strong></span>
+                    <strong class="swiss-record">{{ row.matches }}</strong>
+                    <span class="swiss-record">{{ row.games }}</span>
+                    <span v-for="(opponent, roundIndex) in row.rounds" :key="roundIndex" class="swiss-round-cell" :title="opponent ? `第 ${roundIndex + 1} 轮对阵 ${team(opponent).name}` : `第 ${roundIndex + 1} 轮待定`">
+                      <TeamLogo v-if="opponent" :meta="team(opponent)" compact />
+                      <i v-else></i>
+                    </span>
+                  </div>
+                </template>
+                <template v-else>
+                  <div v-for="row in simulationStandingsRows" :key="row.team" class="swiss-row simulation-swiss-row" :class="`zone-${simulationStandingZone(row)}`">
+                    <span class="swiss-rank">{{ row.rank }}</span>
+                    <span class="swiss-team"><TeamLogo :meta="team(row.team)" compact /><strong>{{ team(row.team).name }}</strong></span>
+                    <strong class="swiss-record">{{ row.wins }} - {{ row.losses }}</strong>
+                    <span class="swiss-record">{{ row.buchholz }}</span>
+                    <span v-for="(round, roundIndex) in row.rounds" :key="roundIndex" class="swiss-round-cell simulation-round-cell" :class="round.result" :title="round.opponent ? `第 ${roundIndex + 1} 轮对阵 ${team(round.opponent).name}${round.result ? ` · ${round.result === 'win' ? '胜' : '负'}` : ''}` : `第 ${roundIndex + 1} 轮待定`">
+                      <TeamLogo v-if="round.opponent" :meta="team(round.opponent)" compact />
+                      <i v-else></i>
+                      <small v-if="round.result">{{ round.result === 'win' ? '胜' : '负' }}</small>
+                    </span>
+                  </div>
+                </template>
               </div>
             </div>
           </section>
-          <div class="standings-legend"><span><i class="legend-mark advance"></i> 4 胜直接晋级</span><span><i class="legend-mark active"></i> 3-2 / 2-3 进入晋级附加赛</span><span><i class="legend-mark eliminated"></i> 4 负淘汰</span><span><i class="legend-line"></i> 当前为首轮初始数据</span></div>
+          <div class="standings-legend"><span><i class="legend-mark advance"></i> 4 胜直接晋级</span><span><i class="legend-mark active"></i> 3-2 / 2-3 进入晋级附加赛</span><span><i class="legend-mark eliminated"></i> 4 负淘汰</span><span><i class="legend-line"></i> {{ groupScheduleMode === 'real' ? '当前为首轮初始数据' : '排名依据战绩、对手分和初始顺位' }}</span></div>
         </template>
 
         <template v-else-if="activeView === 'elimination'">
@@ -1074,6 +1273,21 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
               </button>
             </div>
             <button v-if="advancementSlots[advancementPicker]" class="advancement-clear-action" @click="clearAdvancementSlot"><X :size="16" /> 清空当前格</button>
+          </section>
+        </div>
+      </Transition>
+      <Transition name="modal">
+        <div v-if="simulationOpponentPicker" class="bracket-picker-scrim" @click.self="simulationOpponentPicker = null">
+          <section class="bracket-picker" role="dialog" aria-modal="true" aria-labelledby="simulation-opponent-picker-title">
+            <header>
+              <div><span class="section-kicker">3-2 TEAM SELECTS</span><h2 id="simulation-opponent-picker-title">{{ team(simulationOpponentPicker).name }} 选择对手</h2></div>
+              <button aria-label="关闭对手选择" @click="simulationOpponentPicker = null"><X :size="20" /></button>
+            </header>
+            <div class="bracket-team-options simulation-opponent-options">
+              <button v-for="option in simulationAvailableOpponents" :key="option.team" @click="chooseSimulationOpponent(option.team)">
+                <TeamLogo :meta="team(option.team)" compact /><span>{{ team(option.team).name }}</span><small>#{{ option.rank }} · 2-3</small>
+              </button>
+            </div>
           </section>
         </div>
       </Transition>
