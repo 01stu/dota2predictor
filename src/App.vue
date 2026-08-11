@@ -119,6 +119,7 @@ const teamMeta = {
   Yandex: { name: 'Team Yandex', short: 'YAN', color: '#e6d65e', logo: '/teamlogos/9823272.png' },
   Huligani: { name: 'HULIGANI', short: 'HUL', color: '#c8c8cd', logo: '/teamlogos/10149530.png' },
 }
+Object.entries(teamMeta).forEach(([id, meta]) => { meta.id = id })
 
 const advancementStorageKey = 'ti2026-advancement-prediction-v2'
 const advancementDefaultSlots = Array(16).fill(null)
@@ -747,7 +748,7 @@ function closeBracketPicker() {
 }
 
 function team(id) {
-  return teamMeta[id] || { name: id, short: '?', color: '#6d6d74' }
+  return teamMeta[id] || { id, name: id, short: '?', color: '#6d6d74' }
 }
 
 onMounted(async () => {

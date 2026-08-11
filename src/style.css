@@ -115,6 +115,26 @@ h1, h2, p { margin: 0; }
 .team-logo img, .mini-logo img { width: 82%; height: 82%; object-fit: contain; filter: drop-shadow(0 3px 5px rgba(0,0,0,.5)); }
 .team-logo b, .mini-logo b { font: inherit; }
 .team-logo { width: 74px; height: 74px; margin-bottom: 12px; }
+.team-roster-trigger { position: relative; display: inline-flex; flex: 0 0 auto; z-index: 1; }
+.team-roster-trigger.roster-open { z-index: 60; }
+.team-roster-anchor { display: inline-flex; outline: 0; }
+.team-roster-anchor:focus-visible { outline: 1px solid rgba(198,166,106,.7); outline-offset: 4px; }
+.team-roster-popover { position: fixed; z-index: 200; width: 728px; max-height: calc(100vh - 24px); padding: 8px; color: #fff; background: #0e0f11; border: 4px solid #b9bdc1; box-shadow: 0 20px 54px rgba(0,0,0,.78); transform: translateX(-50%); text-align: left; cursor: default; overflow: auto; }
+.team-roster-popover.above { transform: translate(-50%, -100%); }
+.team-roster-header { min-height: 53px; display: flex; align-items: center; gap: 10px; padding: 0 3px; }
+.team-roster-header-logo { width: 46px; height: 46px; display: grid; place-items: center; flex: 0 0 46px; }
+.team-roster-header-logo img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 3px 4px rgba(0,0,0,.5)); }
+.team-roster-header > strong { min-width: 0; color: #fff; font: 600 24px var(--display); letter-spacing: 3px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-roster-members { display: grid; grid-template-columns: repeat(5, minmax(126px, 1fr)); gap: 8px; overflow-x: auto; padding-top: 4px; }
+.team-roster-player { min-width: 126px; display: grid; grid-template-rows: 30px 133px 73px; background: #2d2e33; }
+.team-roster-role { display: flex; align-items: center; justify-content: flex-end; padding: 0 10px; color: #fff; background: #3a3e45; font-size: 15px; font-weight: 700; }
+.team-roster-portrait { width: 100%; height: 133px; overflow: hidden; background: #242424; }
+.team-roster-portrait img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: center top; }
+.team-roster-player-info { min-width: 0; padding: 10px 10px 7px; background: #2d2e33; }
+.team-roster-player-info strong,.team-roster-player-info small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
+.team-roster-player-info strong { color: #fff; font: 500 15px var(--display); letter-spacing: 1px; }
+.team-roster-country { width: 17px; height: 12px; display: inline-block; margin-right: 5px; object-fit: cover; vertical-align: -1px; }
+.team-roster-player-info small { margin-top: 4px; color: #adb1b8; font-size: 10px; letter-spacing: 1px; }
 .team-pick strong { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
 .team-pick small { color: #67656a; font-size: 12px; margin-top: 6px; }
 .team-pick.selected small { color: #d46758; }
@@ -280,7 +300,9 @@ h1, h2, p { margin: 0; }
 .advancement-slot.empty { color: #9a8a6b; border-style: dashed; background: linear-gradient(180deg, rgba(52,39,23,.78), rgba(30,23,14,.9)); }
 .advancement-slot.correct { border-color: rgba(93,174,108,.8); box-shadow: inset 0 0 35px rgba(70,151,86,.13); }
 .advancement-slot.incorrect { border-color: rgba(211,82,70,.75); box-shadow: inset 0 0 35px rgba(181,57,47,.12); }
-.advancement-slot .team-logo { z-index: 1; width: 78%; max-width: 112px; height: auto; aspect-ratio: 1; margin: 0; border: 0; background: transparent; }
+.advancement-slot > .team-roster-trigger { z-index: 1; width: 78%; max-width: 112px; aspect-ratio: 1; }
+.advancement-slot .team-roster-anchor { width: 100%; height: 100%; }
+.advancement-slot .team-logo { width: 100%; max-width: none; height: 100%; aspect-ratio: 1; margin: 0; border: 0; background: transparent; }
 .advancement-slot .team-logo img { width: 100%; height: 100%; }
 .advancement-empty-logo { z-index: 1; width: 78%; max-width: 112px; aspect-ratio: 1; display: grid; place-items: center; border: 1px dashed rgba(198,166,106,.38); color: #aa9366; font: 500 36px var(--display); }
 .advancement-slot > strong { z-index: 1; width: 100%; min-height: 42px; display: grid; place-items: center; overflow-wrap: anywhere; color: inherit; font: 600 17px/1.2 var(--display); text-transform: uppercase; }
