@@ -44,6 +44,20 @@ function advancementSummaryFromRows(rows = []) {
   }
 }
 
+function swissPredictionFromRows(rows = []) {
+  const row = rows?.[0]
+  if (!row) return null
+  return {
+    hasPrediction: Boolean(row.has_prediction),
+    picks: row.prediction_picks && typeof row.prediction_picks === 'object' ? row.prediction_picks : {},
+    playInPairings: row.play_in_pairings && typeof row.play_in_pairings === 'object' ? row.play_in_pairings : {},
+    playInWinners: row.play_in_winners && typeof row.play_in_winners === 'object' ? row.play_in_winners : {},
+    acceptingPredictions: Boolean(row.accepting_predictions),
+    lockAt: row.lock_at || null,
+    savedAt: row.saved_at || null,
+  }
+}
+
 async function ensureAnonymousSession() {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
   if (sessionError) throw sessionError
@@ -123,4 +137,26 @@ export async function submitCloudAdvancementPrediction(slots) {
   })
   if (error) throw error
   return getCloudAdvancementPrediction()
+}
+
+export async function getCloudSwissPrediction() {
+  if (!supabase) return null
+  await ensureAnonymousSession()
+
+  const { data, error } = await supabase.rpc('get_my_swiss_prediction')
+  if (error) throw error
+  return swissPredictionFromRows(data)
+}
+
+export async function submitCloudSwissPrediction({ picks, playInPairings, playInWinners }) {
+  if (!supabase) throw new Error('Supabase is not configured')
+  await ensureAnonymousSession()
+
+  const { error } = await supabase.rpc('submit_swiss_prediction', {
+    p_picks: picks,
+    p_play_in_pairings: playInPairings,
+    p_play_in_winners: playInWinners,
+  })
+  if (error) throw error
+  return getCloudSwissPrediction()
 }

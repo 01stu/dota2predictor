@@ -49,6 +49,8 @@ The anon key is designed for browser use. Never put the Supabase service-role ke
 - `user_profiles` stores the nickname for each anonymous user.
 - `advancement_predictions` stores one 16-slot advancement prediction per anonymous user.
 - `advancement_prediction_settings` stores the deadline and the official result.
+- `swiss_predictions` stores each anonymous user's latest Swiss simulation, including play-in pairings and winners.
+- `swiss_prediction_settings` freezes the cloud snapshot at the Swiss prediction deadline.
 - `submit_match_prediction` validates and upserts a vote.
 - `get_prediction_totals` returns aggregate counts without exposing voters.
 - `get_my_predictions` returns only the current anonymous user's choices.
@@ -57,8 +59,12 @@ The anon key is designed for browser use. Never put the Supabase service-role ke
 - `submit_advancement_prediction` validates and saves a partial or complete advancement prediction.
 - `get_advancement_prediction_summary` returns the current user's prediction and aggregate result statistics.
 - `publish_advancement_results` validates and publishes the official result; it is not callable from the frontend.
+- `submit_swiss_prediction` validates and saves the latest Swiss simulation snapshot.
+- `get_my_swiss_prediction` returns only the current anonymous user's frozen or active snapshot.
 
 Update `prediction_matches` when the official playoff bracket changes. Matches automatically reject new predictions after `lock_at`.
+
+The Swiss prediction deadline is `2026-08-13 10:00:00+08`. Supabase enforces this with its server clock. After the deadline, the standings prediction mode remains editable locally, but its cloud snapshot no longer changes.
 
 ## Advancement results
 
