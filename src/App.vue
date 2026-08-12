@@ -1,14 +1,16 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
-  ArrowRight, CalendarDays, CheckCircle2, ChevronDown, Clock3, Database,
+  ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, ChevronDown, Clock3, Database,
   GitBranch, LayoutDashboard, ListOrdered, Menu, Pencil, Radio, RotateCcw, Shield, Sparkles, Swords,
-  Target, Trophy, UserRound, Users, X, XCircle
+  Search, Target, Trophy, UserRound, Users, X, XCircle
 } from 'lucide-vue-next'
 import TeamLogo from './components/TeamLogo.vue'
+import SearchableSelect from './components/SearchableSelect.vue'
 import { heroes } from './data/heroes'
 import { playerIds } from './data/playerIds'
 import { buildSwissSimulation } from './services/swissSimulation'
+import { loadPlayerData } from './services/playerData'
 import {
   getCloudAdvancementPrediction,
   getCloudSwissPrediction,
@@ -66,6 +68,7 @@ const viewPaths = {
   groups: '/groups',
   advancement: '/advancement-prediction',
   playoffs: '/playoffs',
+  players: '/players',
   'my-picks': '/my-predictions',
 }
 const pathViews = Object.fromEntries(Object.entries(viewPaths).map(([view, path]) => [path, view]))
@@ -98,6 +101,7 @@ const navItems = [
   { id: 'groups', label: '小组赛程', icon: Users },
   { id: 'advancement', label: '晋级预测', icon: GitBranch },
   { id: 'playoffs', label: '淘汰赛对阵', icon: Swords },
+  { id: 'players', label: '沙场点兵', icon: Search },
   { id: 'my-picks', label: '我的预测', icon: Target },
 ]
 
@@ -1077,8 +1081,80 @@ function team(id) {
   return teamMeta[id] || { id, name: id, short: '?', color: '#6d6d74' }
 }
 
+const playerDirectory = ref([])
+const playerDirectoryLoading = ref(true)
+const playerDirectoryError = ref('')
+const playerPage = ref(1)
+const playerPageSize = 50
+const playerFilterDraft = reactive({ team: '', country: '', age: '', tiCount: '', position: '' })
+const playerFilters = reactive({ team: '', country: '', age: '', tiCount: '', position: '' })
+
+function uniquePlayerValues(field, sorter = (a, b) => a.localeCompare(b, 'zh-CN')) {
+  return [...new Set(playerDirectory.value.map(player => player[field]).filter(value => value !== '' && value !== null))].sort(sorter)
+}
+
+const playerTeamOptions = computed(() => uniquePlayerValues('team'))
+const playerCountryOptions = computed(() => uniquePlayerValues('country'))
+const playerTeamSearchOptions = computed(() => [
+  { value: '__none__', label: '无战队' },
+  ...playerTeamOptions.value.map(value => ({ value, label: value })),
+])
+const playerCountrySearchOptions = computed(() => playerCountryOptions.value.map(value => ({ value, label: value })))
+const playerAgeOptions = computed(() => uniquePlayerValues('age', (a, b) => a - b))
+const playerTiCountOptions = computed(() => uniquePlayerValues('tiCount', (a, b) => a - b))
+const playerPositionOptions = computed(() => {
+  const positionOrder = ['一号位', '二号位', '三号位', '四号位', '五号位', '辅助', '教练', '其他']
+  const available = new Set(uniquePlayerValues('position'))
+  return positionOrder.filter(position => available.has(position))
+})
+
+const filteredPlayers = computed(() => playerDirectory.value.filter(player => {
+  if (playerFilters.team === '__none__' ? player.team : playerFilters.team && player.team !== playerFilters.team) return false
+  if (playerFilters.country && player.country !== playerFilters.country) return false
+  if (playerFilters.age === '__unknown__' ? player.age !== null : playerFilters.age !== '' && player.age !== Number(playerFilters.age)) return false
+  if (playerFilters.tiCount !== '' && player.tiCount !== Number(playerFilters.tiCount)) return false
+  if (playerFilters.position && player.position !== playerFilters.position) return false
+  return true
+}))
+const playerTotalPages = computed(() => Math.max(1, Math.ceil(filteredPlayers.value.length / playerPageSize)))
+const visiblePlayers = computed(() => {
+  const start = (playerPage.value - 1) * playerPageSize
+  return filteredPlayers.value.slice(start, start + playerPageSize)
+})
+const playerResultRange = computed(() => {
+  if (!filteredPlayers.value.length) return '0'
+  const start = (playerPage.value - 1) * playerPageSize + 1
+  return `${start}-${Math.min(start + playerPageSize - 1, filteredPlayers.value.length)}`
+})
+
+function queryPlayers() {
+  Object.assign(playerFilters, playerFilterDraft)
+  playerPage.value = 1
+}
+
+function resetPlayerFilters() {
+  Object.keys(playerFilterDraft).forEach(key => { playerFilterDraft[key] = '' })
+  queryPlayers()
+}
+
+function changePlayerPage(page) {
+  playerPage.value = Math.max(1, Math.min(playerTotalPages.value, page))
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+async function initializePlayerDirectory() {
+  try {
+    playerDirectory.value = await loadPlayerData()
+  } catch (error) {
+    playerDirectoryError.value = error.message || '选手数据加载失败'
+  } finally {
+    playerDirectoryLoading.value = false
+  }
+}
+
 onMounted(async () => {
   window.addEventListener('hashchange', syncViewFromHash)
+  void initializePlayerDirectory()
   if (!isSupabaseConfigured) return
 
   try {
@@ -1405,6 +1481,41 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
             </div>
           </section>
           <div class="bracket-note"><Shield :size="18" /><span>当前淘汰赛路径仅供娱乐，只保存在当前浏览器、不参与预测统计；胜者进入下一轮，败者进入败者组，小组赛结束后将更新正式对阵。</span></div>
+        </template>
+
+        <template v-else-if="activeView === 'players'">
+          <section class="page-title player-directory-title"><div><span class="section-kicker">PLAYER ARCHIVE · TI HISTORY</span><h1>沙场点兵</h1><p>按战队、国家、年龄、TI 参赛经历与位置筛选选手档案。</p></div><div class="stage-badge gold"><Search :size="22" /><span>选手数据<strong>{{ playerDirectoryLoading ? '加载中' : `${playerDirectory.length} 人` }}</strong></span></div></section>
+
+          <section class="player-filter-panel" aria-label="选手筛选条件">
+            <div class="player-filter-grid">
+              <label><span>战队</span><SearchableSelect v-model="playerFilterDraft.team" :options="playerTeamSearchOptions" placeholder="全部战队" /></label>
+              <label><span>国家</span><SearchableSelect v-model="playerFilterDraft.country" :options="playerCountrySearchOptions" placeholder="全部国家" /></label>
+              <label><span>年龄</span><select v-model="playerFilterDraft.age"><option value="">全部年龄</option><option value="__unknown__">未知年龄</option><option v-for="option in playerAgeOptions" :key="option" :value="String(option)">{{ option }} 岁</option></select><ChevronDown :size="16" /></label>
+              <label><span>参加 TI 次数</span><select v-model="playerFilterDraft.tiCount"><option value="">全部次数</option><option v-for="option in playerTiCountOptions" :key="option" :value="String(option)">{{ option }} 次</option></select><ChevronDown :size="16" /></label>
+              <label><span>位置</span><select v-model="playerFilterDraft.position"><option value="">全部位置</option><option v-for="option in playerPositionOptions" :key="option" :value="option">{{ option }}</option></select><ChevronDown :size="16" /></label>
+            </div>
+            <div class="player-filter-actions"><button class="secondary-action" @click="resetPlayerFilters"><RotateCcw :size="16" />重置</button><button class="primary player-search-action" @click="queryPlayers"><Search :size="17" />查询</button></div>
+          </section>
+
+          <section class="player-results-section">
+            <header class="player-results-head"><div><span class="section-kicker">SEARCH RESULTS</span><h2>查询结果</h2></div><span v-if="!playerDirectoryLoading && !playerDirectoryError">显示 {{ playerResultRange }}，共 {{ filteredPlayers.length }} 名选手</span></header>
+            <div v-if="playerDirectoryLoading" class="player-directory-state"><span class="live-dot"></span> 正在加载选手档案…</div>
+            <div v-else-if="playerDirectoryError" class="player-directory-state error"><XCircle :size="20" />{{ playerDirectoryError }}</div>
+            <div v-else-if="!filteredPlayers.length" class="player-directory-state"><Search :size="22" />没有符合当前条件的选手</div>
+            <div v-else class="player-table-scroll">
+              <div class="player-table">
+                <div class="player-table-row player-table-head"><span>选手 ID</span><span>战队</span><span>国家</span><span>年龄</span><span>参加 TI 次数</span><span>位置</span></div>
+                <div v-for="player in visiblePlayers" :key="`${player.id}-${player.country}-${player.team}`" class="player-table-row">
+                  <strong>{{ player.id }}</strong><span>{{ player.team || '无战队' }}</span><span>{{ player.country || '未知' }}</span><span>{{ player.age === null ? '未知' : `${player.age} 岁` }}</span><span>{{ player.tiCount }} 次</span><span>{{ player.position || '未知' }}</span>
+                </div>
+              </div>
+            </div>
+            <nav v-if="playerTotalPages > 1" class="player-pagination" aria-label="选手查询结果分页">
+              <button :disabled="playerPage === 1" aria-label="上一页" @click="changePlayerPage(playerPage - 1)"><ArrowLeft :size="17" /></button>
+              <span>第 <strong>{{ playerPage }}</strong> / {{ playerTotalPages }} 页</span>
+              <button :disabled="playerPage === playerTotalPages" aria-label="下一页" @click="changePlayerPage(playerPage + 1)"><ArrowRight :size="17" /></button>
+            </nav>
+          </section>
         </template>
 
         <template v-else>
