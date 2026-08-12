@@ -1600,7 +1600,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncViewFromHash))
           </section>
         </div>
       </Transition>
-      <footer class="site-footer">
+      <footer class="site-footer" style="display:none">
         <p>本站由 <a href="https://01stu.com/" target="_blank" rel="noopener noreferrer">01工作室</a> 制作开发； 本站由 <a href="https://1zhongzhuan.com" target="_blank" rel="noopener noreferrer">壹中转</a> 提供 AI GPT Token 支持</p>
       </footer>
     </main>
